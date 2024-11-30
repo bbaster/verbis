@@ -23,9 +23,9 @@ import getpass
 import re
 import json
 import os
+import sys
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from math import floor
 from bs4 import BeautifulSoup
 
 
@@ -55,15 +55,15 @@ def get_semester_id(soup_timetable: BeautifulSoup) -> str:
 class Tile():
     def __init__(self, lecture: str):
         self.lecture = json.loads(lecture)
-        self.start_timestamp = self.lecture["dataRozpoczecia"]
-        self.end_timestamp = self.lecture["dataZakonczenia"]
+        self.start_timestamp = self.lecture["dataRozpoczecia"]/1000
+        self.end_timestamp = self.lecture["dataZakonczenia"]/1000
         self.subject_name = self.lecture["nazwaPelnaPrzedmiotu"]
         self.locations = [ sale["nazwaSkrocona"] for sale in self.lecture["sale"]]
         self.lecturers = [ wykladowcy["stopienImieNazwisko"] for wykladowcy in self.lecture["wykladowcy"]]
 
     def __str__(self):
         return f"""
-{datetime.fromtimestamp(self.start_timestamp/1000).strftime("%H:%M")} - {datetime.fromtimestamp(self.end_timestamp/1000).strftime("%H:%M")}
+{datetime.fromtimestamp(self.start_timestamp).strftime("%H:%M")} - {datetime.fromtimestamp(self.end_timestamp).strftime("%H:%M")}
 {self.subject_name}
 {', '.join(self.locations)}
 {', '.join(self.lecturers)}
@@ -103,8 +103,10 @@ if os.getenv('PASSWORD') != None:
 else:
     password = getpass.getpass(prompt="Password: ", stream=None)
 
-
-date_range = input("Specify a timetable date range (eg. \"04.11.2024 - 09.11.2024\", or nothing to fetch current day, or \"week\" for current week): ")
+if len(sys.argv) > 1:
+    date_range = ' '.join(sys.argv[1:])
+else:
+    date_range = input("Specify a timetable date range (eg. \"04.11.2024 - 09.11.2024\", or nothing to fetch current day, or \"week\" for current week): ")
 pattern = (
     r"^(?:(?P<start_day>[1-9]|[0-2][0-9]|3[01])\."
     r"(?P<start_month>1[0-2]|0?[1-9])?\.?"
@@ -167,11 +169,11 @@ with open("website-main.html", "w+") as file:
     file.seek(0)
     soup_main = BeautifulSoup(file, "lxml")
     if soup_main.find_all(class_="bad-pasword-wiki"):
-        print("Wrong login or password!")
+        print("Wrong login or password!", file=sys.stderr)
         file.truncate(0)
         exit(1)
     else:
-        print("Authentication successful!")
+        print("Authentication successful!", file=sys.stderr)
 
 cookies["JSESSIONID"] = get_jsessionid(soup_main)
 headers["Referer"] = f"https://wu.ans-nt.edu.pl/ppuz-stud-app/ledge/view/stud.schedule.SchedulePage?idosoby={get_person_id(soup_main)}&nrtury={get_round_number(soup_main)}"
@@ -198,51 +200,72 @@ headers["Sec-Fetch-Site"] = "same-origin"
 headers["Pragma"] = "no-cache"
 headers["Cache-Control"] = "no-cache"
 
-data = {
-    "service": "Planowanie",
-    "method": "getUlozoneTerminyOsoby",
-    "params": {
-        "idOsoby":get_person_id(soup_main),"idSemestru":get_semester_id(soup_timetable),"poczatekTygodnia":floor(date_start.timestamp())*1000
+
+def fetch_and_parse_timetable(start_timestamp: int) -> dict:
+
+    timetable = {}
+
+    data = {
+        "service": "Planowanie",
+        "method": "getUlozoneTerminyOsoby",
+        "params": {
+            "idOsoby":get_person_id(soup_main),"idSemestru":get_semester_id(soup_timetable),"poczatekTygodnia":start_timestamp*1000
+        }
     }
-}
-
-response = requests.post(
-    'https://wu.ans-nt.edu.pl/ppuz-stud-app/ledge/view/AJAX',
-    params=params,
-    cookies=cookies,
-    headers=headers,
-    data=json.dumps(data)
-)
-
-with open("timetable.json", "w+") as file:
-    file.write(json.dumps(response.text))
-
-lectures=json.loads(response.text)
-timetable = {}
-
-for i in range(int(lectures["returnedValue"]["numRows"])-1, -1, -1):
-    tile = Tile(json.dumps(lectures["returnedValue"]["items"][i]))
-    if date_start.timestamp() <= tile.start_timestamp/1000 <= date_end.timestamp():
-        date_key = datetime.fromtimestamp(tile.start_timestamp/1000).strftime("%d.%m.")
-        timestamp = tile.start_timestamp/1000
-        text = str(tile)
-        if not date_key in timetable:
-            timetable[date_key] = {}
-        if not i in timetable[date_key]:
-            timetable[date_key][i] = {}
-        timetable[date_key][i]["timestamp"] = timestamp
-        timetable[date_key][i]["text"] = text
-
-timetable = {
-    date: dict(
-        sorted(
-            lectures.items(),
-            key = lambda item: item[1]["timestamp"]
-        )
+    
+    response = requests.post(
+        'https://wu.ans-nt.edu.pl/ppuz-stud-app/ledge/view/AJAX',
+        params=params,
+        cookies=cookies,
+        headers=headers,
+        data=json.dumps(data)
     )
-    for date, lectures in timetable.items()
-}
-for date, lectures in timetable.items():
-    print(date)
-    for i in lectures:
-        print(timetable[date][i]["text"])
+    
+    with open("timetable.json", "w+") as file:
+        file.write(json.dumps(response.text))
+    
+    lectures=json.loads(response.text)
+
+    for i in range(int(lectures["returnedValue"]["numRows"])-1, -1, -1):
+        tile = Tile(json.dumps(lectures["returnedValue"]["items"][i]))
+        if date_start.timestamp() <= tile.start_timestamp <= date_end.timestamp():
+            date_key = datetime.fromtimestamp(tile.start_timestamp).strftime("%d.%m.")
+            timestamp = tile.start_timestamp
+            text = str(tile)
+            if not date_key in timetable:
+                timetable[date_key] = {}
+            if not i in timetable[date_key]:
+                timetable[date_key][i] = {}
+            timetable[date_key][i]["timestamp"] = timestamp
+            timetable[date_key][i]["text"] = text
+    
+    timetable = {
+        date: dict(
+            sorted(
+                lectures.items(),
+                key = lambda item: item[1]["timestamp"]
+            )
+        )
+        for date, lectures in timetable.items()
+    }
+
+    for date, lectures in timetable.items():
+        print(date)
+        for i in lectures:
+            print(timetable[date][i]["text"])
+    return timetable
+
+
+current_start_date = (date_start - timedelta(days=date_start.weekday()))
+current_end_date = current_start_date.replace(hour=23, minute=59, second=59) + timedelta(days=4)
+timetable = fetch_and_parse_timetable(start_timestamp=int(current_start_date.timestamp()))
+
+last_timestamp = max(lecture["timestamp"] for lecture in timetable[max(timetable.keys())].values())
+
+while datetime.fromtimestamp(last_timestamp).replace(hour=23, minute=59, second=59).timestamp() < date_end.timestamp():
+    current_start_date = current_start_date - timedelta(days=current_start_date.weekday()-7)
+    timetable = fetch_and_parse_timetable(start_timestamp=int(current_start_date.timestamp()))
+    if not timetable:
+        last_timestamp = (datetime.fromtimestamp(last_timestamp) - timedelta(days=datetime.fromtimestamp(last_timestamp).weekday()-7)).timestamp()
+    else:
+        last_timestamp = max(lecture["timestamp"] for lecture in timetable[max(timetable.keys())].values())
