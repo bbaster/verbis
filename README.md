@@ -15,7 +15,11 @@ Now, you can run the `main.py` file with `python main.py`, and authenticate your
 ```
 LOGIN=<insert your username here>
 PASSWORD=<insert your password here>
+DOMAIN=<insert your school's domain name, for example wu.ans-nt.edu.pl>
+SCHOOL_CODE=<insert your school's codename, can be found in the URI's path (/ppuz-stud-app/), for example ppuz>
 ```
 Replace the angle brackets (and the brackets themselves!) with relevant information.
+
+The `.env` file is also needed for school data.
 
 A date range can be input either through command line arguments or interactively.

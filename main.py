@@ -69,13 +69,28 @@ class Tile():
 {', '.join(self.lecturers)}
 """
 
+load_dotenv()
+
+if os.getenv("DOMAIN"):
+    domain = os.getenv("DOMAIN")
+else:
+    print("Error: DOMAIN unset!", file=sys.stderr)
+    exit(1)
+
+if os.getenv("SCHOOL_CODE"):
+    school_code = os.getenv("SCHOOL_CODE")
+else:
+    print("Error: SCHOOL_CODE unset!", file=sys.stderr)
+    exit(1)
+
+
 headers = {
     'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/png,image/svg+xml,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.7,pl;q=0.3',
-    'Referer': 'https://wu.ans-nt.edu.pl/ppuz-stud-app/ledge/view/stud.StartPage',
+    'Referer': f'https://{domain}/{school_code}-stud-app/ledge/view/stud.StartPage',
     'Content-Type': 'application/x-www-form-urlencoded',
-    'Origin': 'https://wu.ans-nt.edu.pl',
+    'Origin': f'https://{domain}/',
     'DNT': '1',
     'Sec-GPC': '1',
     'Connection': 'keep-alive',
@@ -90,8 +105,6 @@ headers = {
 params = {
     'action': 'security.authentication.ImapLogin',
 }
-
-load_dotenv()
 
 if os.getenv('LOGIN') != None:
     username=os.getenv('LOGIN')
@@ -157,7 +170,7 @@ for key, value in data.items():
 data = urllib.parse.urlencode(data)
 
 response = requests.post(
-    'https://wu.ans-nt.edu.pl/ppuz-stud-app/ledge/view/stud.StartPage',
+    f'https://{domain}/{school_code}-stud-app/ledge/view/stud.StartPage',
     params=params,
     cookies=cookies,
     headers=headers,
@@ -176,12 +189,12 @@ with open("website-main.html", "w+") as file:
         print("Authentication successful!", file=sys.stderr)
 
 cookies["JSESSIONID"] = get_jsessionid(soup_main)
-headers["Referer"] = f"https://wu.ans-nt.edu.pl/ppuz-stud-app/ledge/view/stud.schedule.SchedulePage?idosoby={get_person_id(soup_main)}&nrtury={get_round_number(soup_main)}"
+headers["Referer"] = f"https://{domain}/{school_code}-stud-app/ledge/view/stud.schedule.SchedulePage?idosoby={get_person_id(soup_main)}&nrtury={get_round_number(soup_main)}"
 params["idosoby"] = get_person_id(soup_main)
 params["nrtury"] = get_round_number(soup_main)
 
 response = requests.post(
-    'https://wu.ans-nt.edu.pl/ppuz-stud-app/ledge/view/stud.schedule.SchedulePage',
+    f'https://{domain}/{school_code}-stud-app/ledge/view/stud.schedule.SchedulePage',
     params=params,
     cookies=cookies,
     headers=headers,
@@ -214,7 +227,7 @@ def fetch_and_parse_timetable(start_timestamp: int) -> dict:
     }
     
     response = requests.post(
-        'https://wu.ans-nt.edu.pl/ppuz-stud-app/ledge/view/AJAX',
+        f'https://{domain}/{school_code}-stud-app/ledge/view/AJAX',
         params=params,
         cookies=cookies,
         headers=headers,
