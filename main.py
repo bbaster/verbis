@@ -24,6 +24,7 @@ import re
 import json
 import os
 import sys
+
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
@@ -132,27 +133,26 @@ pattern = (
 
 
 date_start = datetime(
-    int(re.search(pattern, date_range).group("start_year") or datetime.now().year),
-    int(re.search(pattern, date_range).group("start_month") or datetime.now().month),
+    int(re.search(pattern, date_range).group("start_year") or ((datetime.today() - timedelta(days=datetime.today().weekday())).year if date_range == "month" else datetime.now().year)),
+    int(re.search(pattern, date_range).group("start_month") or ((datetime.today() - timedelta(days=datetime.today().weekday())).month if date_range == "week" else datetime.now().month)),
     int(re.search(pattern, date_range).group("start_day") or ((datetime.today() - timedelta(days=datetime.today().weekday())).day if date_range == "week" else datetime.now().day))
+
 )
 
 date_end = datetime(
-    int(re.search(pattern, date_range).group("end_year") or datetime.now().year),
-    int(re.search(pattern, date_range).group("end_month") or datetime.now().month),
-    int(re.search(pattern, date_range).group("end_day") or ((datetime.today() - timedelta(days=datetime.today().weekday())).day+4 if date_range == "week" else date_start.day if re.search(pattern, date_range).group("start_day") else datetime.now().day)),
+    int(re.search(pattern, date_range).group("end_year") or ((datetime.today() - timedelta(days=datetime.today().weekday() - 4)).year if date_range == "week" else datetime.now().year)),
+    int(re.search(pattern, date_range).group("end_month") or ((datetime.today() - timedelta(days=datetime.today().weekday() - 4)).month if date_range == "week" else datetime.now().month)),
+    int(re.search(pattern, date_range).group("end_day") or ((datetime.today() - timedelta(days=datetime.today().weekday() - 4)).day if date_range == "week" else date_start.day if re.search(pattern, date_range).group("start_day") else datetime.now().day)),
     23,
     59,
     59
 )
-
 '''
 print(date_start, date_end, sep='\n')
 print("group start day: ", re.search(pattern, date_range).group("start_day"))
 print("group end day: ", re.search(pattern, date_range).group("end_day"))
 exit()
 '''
-
 cookies = {
     f'locale.{username}': 'en_US',
 }
@@ -270,10 +270,12 @@ def fetch_and_parse_timetable(start_timestamp: int) -> dict:
 
 
 current_start_date = (date_start - timedelta(days=date_start.weekday()))
-current_end_date = current_start_date.replace(hour=23, minute=59, second=59) + timedelta(days=4)
 timetable = fetch_and_parse_timetable(start_timestamp=int(current_start_date.timestamp()))
 
-last_timestamp = max(lecture["timestamp"] for lecture in timetable[max(timetable.keys())].values())
+if not timetable:
+    last_timestamp = current_start_date.timestamp()
+else:
+    last_timestamp = max(lecture["timestamp"] for lecture in timetable[max(timetable.keys())].values())
 
 while datetime.fromtimestamp(last_timestamp).replace(hour=23, minute=59, second=59).timestamp() < date_end.timestamp():
     current_start_date = current_start_date - timedelta(days=current_start_date.weekday()-7)
